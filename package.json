@@ -1,0 +1,24 @@
+{
+  "name": "web-research-mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only Web search and page extraction MCP server using Streamable HTTP",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "smoke": "node scripts/smoke-test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "cheerio": "^1.1.2",
+    "express": "^4.21.2",
+    "ipaddr.js": "^2.2.0",
+    "undici": "^7.12.0",
+    "zod": "^4.0.0",
+    "dotenv": "^16.6.1"
+  }
+}

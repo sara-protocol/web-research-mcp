@@ -1,0 +1,12 @@
+# Copy into your Caddy configuration and replace the example hostname.
+# This example assumes Caddy runs directly on the host machine, while
+# compose.yaml publishes the app only on 127.0.0.1:8787.
+
+mcp.example.com {
+    encode zstd gzip
+
+    reverse_proxy 127.0.0.1:8787 {
+        # Avoid buffering responses used by streaming-compatible MCP clients.
+        flush_interval -1
+    }
+}

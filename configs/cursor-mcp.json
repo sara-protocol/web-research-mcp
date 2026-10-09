@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "web-research": {
+      "url": "https://YOUR_DOMAIN.example/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:WEB_MCP_TOKEN}"
+      }
+    }
+  }
+}

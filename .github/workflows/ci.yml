@@ -1,0 +1,102 @@
+# ============================================================================
+# CI — Web Research MCP Server
+# 目的：每次 push / PR 时验证仓库可构建、服务可启动、健康检查通过。
+# ============================================================================
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    name: 构建与验证 / Build and validate
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    steps:
+      - name: 检出仓库 / Checkout
+        uses: actions/checkout@v4
+
+      - name: 安装 Node 22 / Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 校验 server.js 语法 / Check server.js syntax
+        run: |
+          set -euo pipefail
+          node --check src/server.js
+          echo "OK   src/server.js"
+
+      - name: 校验 package.json / Validate package.json
+        run: |
+          set -euo pipefail
+          node -e "const p = require('./package.json'); if (!p.name || !p.version) process.exit(1); console.log('OK   package.json', p.name, p.version)"
+
+      - name: 准备 .env / Prepare .env
+        run: |
+          set -euo pipefail
+          TEST_TOKEN=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+          sed "s|replace_with_a_long_random_secret|${TEST_TOKEN}|" .env.example > .env
+          echo "OK   .env prepared"
+
+      - name: 构建容器 / Build image
+        run: |
+          set -euo pipefail
+          docker compose build
+
+      - name: 启动服务 / Start service
+        run: |
+          set -euo pipefail
+          docker compose up -d
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' web-research-mcp 2>/dev/null || echo "unknown")
+            if [ "$STATUS" = "healthy" ]; then
+              echo "OK   container healthy after ${i} checks"
+              break
+            fi
+            sleep 2
+          done
+          docker ps
+
+      - name: 健康检查 / Health check
+        run: |
+          set -euo pipefail
+          RESPONSE=$(curl -sf http://127.0.0.1:8787/healthz)
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"ok":true' || { echo "::error::healthz did not return ok:true"; exit 1; }
+          echo "OK   /healthz"
+
+      - name: 未认证请求应返回 401 / Unauthorized request must return 401
+        run: |
+          set -euo pipefail
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:8787/mcp \
+            -H "Content-Type: application/json" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}')
+          echo "HTTP $CODE"
+          [ "$CODE" = "401" ] || { echo "::error::expected 401, got $CODE"; exit 1; }
+          echo "OK   unauthorized /mcp rejected"
+
+      - name: 认证握手 / Authenticated MCP initialize
+        run: |
+          set -euo pipefail
+          TOKEN=$(grep '^MCP_BEARER_TOKEN=' .env | cut -d= -f2)
+          BODY='{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"ci","version":"0.1"}}}'
+          RESPONSE=$(curl -sf -X POST http://127.0.0.1:8787/mcp \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Accept: application/json, text/event-stream" \
+            -d "$BODY")
+          echo "$RESPONSE" | grep -q 'web-research-mcp' || { echo "::error::initialize did not return server info"; exit 1; }
+          echo "OK   authenticated initialize"
+
+      - name: 停止服务 / Stop service
+        if: always()
+        run: |
+          docker compose down -v || true
+          docker compose logs --tail 30 || true
