@@ -4,6 +4,15 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
+// server.js performs a startup check on MCP_BEARER_TOKEN at module load time
+// and calls process.exit(1) if it is missing. In CI there is no .env file,
+// so we set a dummy value BEFORE importing the module.
+// This only affects the module's startup check; the actual tests never send
+// authenticated requests.
+process.env.MCP_BEARER_TOKEN = process.env.MCP_BEARER_TOKEN || 'a'.repeat(64);
+process.env.BRAVE_SEARCH_API_KEY = process.env.BRAVE_SEARCH_API_KEY || 'dummy';
+
+
 const { isPublicIp, validateAndResolvePublicUrl } = await import('../src/server.js');
 
 describe('isPublicIp — IPv4', () => {
