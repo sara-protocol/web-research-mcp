@@ -60,3 +60,9 @@ test-fetch.bat
 apply_v02_patch.py
 make_ops_files.py
 parse-sse.py
+
+# 本地调试产物
+test-output.txt
+setup-ssrf-tests.py
+fix-test-expectations.py
+insert-npm-test.py

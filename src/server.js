@@ -10,6 +10,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { z } from 'zod';
+import { pathToFileURL } from 'node:url';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -114,7 +115,7 @@ function countPublicSearch() {
 // ---------------------------------------------------------------------------
 // SSRF checks
 // ---------------------------------------------------------------------------
-function isPublicIp(address) {
+export function isPublicIp(address) {
   try {
     const parsed = ipaddr.process(address);
     if (parsed.range() !== 'unicast') return false;
@@ -126,7 +127,7 @@ function isPublicIp(address) {
   }
 }
 
-async function validateAndResolvePublicUrl(input) {
+export async function validateAndResolvePublicUrl(input) {
   let url;
   try {
     url = new URL(input);
@@ -147,7 +148,7 @@ async function validateAndResolvePublicUrl(input) {
     throw new Error('Non-standard ports are blocked. Only ports 80 and 443 are allowed.');
   }
 
-  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.+$/, '');
   if (!hostname
     || hostname === 'localhost'
     || hostname.endsWith('.localhost')
@@ -538,20 +539,25 @@ if (PUBLIC_MCP_ENABLED) {
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
-app.listen(PORT, HOST, () => {
-  console.log(`Web Research MCP listening on http://${HOST}:${PORT}`);
-  console.log(`Protected MCP endpoint: /mcp (Bearer token required, tools: web_search, fetch_page, web_research_bundle)`);
-  if (PUBLIC_MCP_ENABLED) {
-    console.warn('=================================================================');
-    console.warn('WARNING: PUBLIC_MCP_ENABLED=true');
-    console.warn('  /public/mcp is a UNAUTHENTICATED endpoint on the network.');
-    console.warn('  It only exposes web_search (no page fetching), but anyone who');
-    console.warn('  knows the URL can consume your Brave Search quota.');
-    console.warn('  Rate limits are in-memory and reset on restart.');
-    console.warn('  Only enable behind a reverse proxy with your own access control.');
-    console.warn('=================================================================');
-    console.log('Public MCP endpoint: /public/mcp (enabled, web_search only, rate-limited)');
-  } else {
-    console.log('Public MCP endpoint: /public/mcp (disabled)');
-  }
-});
+// 只在作为主程序执行时启动服务器;作为模块被 import 时不启动。
+// 这让测试文件可以 import 关键函数而不占用端口。
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  app.listen(PORT, HOST, () => {
+    console.log(`Web Research MCP listening on http://${HOST}:${PORT}`);
+    console.log(`Protected MCP endpoint: /mcp (Bearer token required, tools: web_search, fetch_page, web_research_bundle)`);
+    if (PUBLIC_MCP_ENABLED) {
+      console.warn('=================================================================');
+      console.warn('WARNING: PUBLIC_MCP_ENABLED=true');
+      console.warn('  /public/mcp is a UNAUTHENTICATED endpoint on the network.');
+      console.warn('  It only exposes web_search (no page fetching), but anyone who');
+      console.warn('  knows the URL can consume your Brave Search quota.');
+      console.warn('  Rate limits are in-memory and reset on restart.');
+      console.warn('  Only enable behind a reverse proxy with your own access control.');
+      console.warn('=================================================================');
+      console.log('Public MCP endpoint: /public/mcp (enabled, web_search only, rate-limited)');
+    } else {
+      console.log('Public MCP endpoint: /public/mcp (disabled)');
+    }
+  });
+}
